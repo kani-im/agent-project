@@ -1,0 +1,4 @@
+[logging]
+level = "INFO"
+format = "json"
+file = "logs/coin-trader.log"
