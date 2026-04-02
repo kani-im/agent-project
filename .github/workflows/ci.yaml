@@ -58,6 +58,7 @@ jobs:
 
   update-gitops:
     needs: build-and-push
+    if: ${{ secrets.GITOPS_PAT != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Update image tag in git-ops
