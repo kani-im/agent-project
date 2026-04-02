@@ -129,8 +129,7 @@ class PortfolioManagerAgent(BaseAgent):
 
         # Check cooldown
         now = time.monotonic()
-        last_time = self._last_order_time.get(market, 0)
-        if now - last_time < ORDER_COOLDOWN:
+        if market in self._last_order_time and now - self._last_order_time[market] < ORDER_COOLDOWN:
             return
 
         # Determine order parameters
