@@ -1,0 +1,86 @@
+name: CI / CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install .[test]
+
+      - name: Run tests
+        run: pytest --tb=short -q
+
+  build-and-push:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+  update-gitops:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update image tag in git-ops
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITOPS_PAT }}
+          script: |
+            const sha = context.sha.substring(0, 7);
+            const path = 'app-of-apps/bespoke-app/coin-trader/override-values.yaml';
+            const { data: file } = await github.rest.repos.getContent({
+              owner: 'kani-im',
+              repo: 'git-ops',
+              path,
+              ref: 'main',
+            });
+            const content = Buffer.from(file.content, 'base64').toString();
+            const updated = content.replace(/tag: ".*"/, `tag: "${sha}"`);
+            await github.rest.repos.createOrUpdateFileContents({
+              owner: 'kani-im',
+              repo: 'git-ops',
+              path,
+              message: `deploy: coin-trader ${sha}`,
+              content: Buffer.from(updated).toString('base64'),
+              sha: file.sha,
+              branch: 'main',
+            });
