@@ -43,8 +43,15 @@ sentiment = 0.25
 max_position_ratio = 0.3
 max_daily_loss_krw = 100000
 max_single_order_krw = 50000
-max_open_positions = 5
+max_open_positions = 999
 drawdown_limit = 0.05
+
+[rules]
+entry_rise_pct = 0.03
+lookback_seconds = 300
+take_profit_pct = 0.05
+stop_loss_pct = 0.02
+max_entry_krw = 50000
 """
     )
     return AppConfig.load(settings)

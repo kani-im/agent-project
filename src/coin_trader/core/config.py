@@ -43,6 +43,27 @@ class StrategyConfig(BaseModel):
     weights: StrategyWeights = StrategyWeights()
 
 
+class RuleStrategyConfig(BaseModel):
+    """Explicit rule-based trading strategy parameters.
+
+    Assumptions:
+    - "risen +3% over the most recent 5 minutes" is measured as
+      (current_price - price_5min_ago) / price_5min_ago >= entry_rise_pct.
+    - The 5-minute window uses real wall-clock ticker data, not candle close times.
+    - Take-profit and stop-loss are evaluated against the Upbit-reported
+      avg_buy_price for each position (volume-weighted across multiple fills).
+    - max_entry_krw caps the KRW amount of a single buy order per coin.
+      Multiple buys for the same coin over time are allowed (DCA-style)
+      as long as each individual order <= max_entry_krw.
+    """
+
+    entry_rise_pct: float = 0.03  # +3% rise in lookback window triggers buy
+    lookback_seconds: int = 300  # 5-minute lookback window
+    take_profit_pct: float = 0.05  # +5% profit -> sell full position
+    stop_loss_pct: float = 0.02  # -2% loss -> sell full position
+    max_entry_krw: int = 50_000  # Max KRW per buy order per coin
+
+
 class CandleConfig(BaseModel):
     intervals: list[str] = ["1m", "5m", "15m", "1h"]
 
@@ -52,6 +73,7 @@ class AppConfig(BaseModel):
     redis: RedisConfig = RedisConfig()
     risk: RiskConfig = RiskConfig()
     strategy: StrategyConfig = StrategyConfig()
+    rules: RuleStrategyConfig = RuleStrategyConfig()
     candle: CandleConfig = CandleConfig()
 
     @classmethod
@@ -70,5 +92,6 @@ class AppConfig(BaseModel):
             redis=redis,
             risk=RiskConfig(**overrides.get("risk", {})),
             strategy=StrategyConfig(**overrides.get("strategy", {})),
+            rules=RuleStrategyConfig(**overrides.get("rules", {})),
             candle=CandleConfig(**overrides.get("candle", {})),
         )

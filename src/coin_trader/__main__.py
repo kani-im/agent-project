@@ -24,6 +24,7 @@ class AgentName(str, Enum):
     strategy_ta = "strategy_ta"
     strategy_ml = "strategy_ml"
     strategy_sentiment = "strategy_sentiment"
+    strategy_rules = "strategy_rules"
     risk_manager = "risk_manager"
     executor = "executor"
     portfolio_manager = "portfolio_manager"
@@ -38,6 +39,7 @@ def _get_agent_class(name: str):
     from coin_trader.agents.portfolio_manager import PortfolioManagerAgent
     from coin_trader.agents.risk_manager import RiskManagerAgent
     from coin_trader.agents.strategy_ml import StrategyMLAgent
+    from coin_trader.agents.strategy_rules import StrategyRulesAgent
     from coin_trader.agents.strategy_sentiment import StrategySentimentAgent
     from coin_trader.agents.strategy_ta import StrategyTAAgent
 
@@ -46,6 +48,7 @@ def _get_agent_class(name: str):
         "strategy_ta": StrategyTAAgent,
         "strategy_ml": StrategyMLAgent,
         "strategy_sentiment": StrategySentimentAgent,
+        "strategy_rules": StrategyRulesAgent,
         "risk_manager": RiskManagerAgent,
         "executor": ExecutorAgent,
         "portfolio_manager": PortfolioManagerAgent,
@@ -59,6 +62,7 @@ AGENT_ORDER = [
     "strategy_ta",
     "strategy_ml",
     "strategy_sentiment",
+    "strategy_rules",
     "risk_manager",
     "executor",
     "portfolio_manager",

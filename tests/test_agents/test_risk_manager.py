@@ -77,7 +77,7 @@ class TestValidateOrder:
         assert "halted" in reason
 
     def test_reject_max_open_positions(self, risk_agent: RiskManagerAgent) -> None:
-        risk_agent._open_positions = 5
+        risk_agent._open_positions = 999  # Matches new default (no practical limit)
         order = OrderRequestMessage(
             source_agent="test",
             market="KRW-BTC",
