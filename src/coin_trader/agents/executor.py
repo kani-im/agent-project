@@ -1,4 +1,9 @@
-"""Executor Agent - Executes approved orders on Upbit."""
+"""Executor Agent - Executes approved orders on Upbit.
+
+Respects the global trading mode:
+- DRY_RUN: logs what *would* be executed, publishes a synthetic FILLED result.
+- LIVE: places real orders on the exchange.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ import asyncio
 from decimal import Decimal
 
 from coin_trader.core.base_agent import BaseAgent
-from coin_trader.core.config import AppConfig
+from coin_trader.core.config import AppConfig, TradingMode
 from coin_trader.core.logging import get_logger
 from coin_trader.core.message import (
     BaseMessage,
@@ -16,6 +21,7 @@ from coin_trader.core.message import (
     OrderStatus,
     OrderType,
 )
+from coin_trader.core.notifier import Event, Notifier
 from coin_trader.exchange.rest_client import UpbitRestClient
 
 log = get_logger(__name__)
@@ -32,15 +38,21 @@ class ExecutorAgent(BaseAgent):
     def __init__(self, config: AppConfig) -> None:
         super().__init__(config)
         self._rest: UpbitRestClient | None = None
-        # Track pending orders for cleanup on shutdown
         self._pending_orders: set[str] = set()
+        self._notifier = Notifier.from_config(config.notification)
+        self._dry_run = config.trading.mode == TradingMode.DRY_RUN
 
     async def setup(self) -> None:
         self._rest = UpbitRestClient(
             access_key=self.config.upbit.access_key.get_secret_value(),
             secret_key=self.config.upbit.secret_key.get_secret_value(),
         )
-        log.info("executor_setup")
+        mode_label = "DRY_RUN" if self._dry_run else "LIVE"
+        log.info("executor_setup", trading_mode=mode_label)
+        await self._notifier.notify(
+            Event.SYSTEM_START,
+            f"Executor started (mode={mode_label})",
+        )
 
     async def run(self) -> None:
         subscribe_task = asyncio.create_task(
@@ -76,7 +88,31 @@ class ExecutorAgent(BaseAgent):
         await self._execute_order(message)
 
     async def _execute_order(self, order: OrderRequestMessage) -> None:
-        """Execute an order with retry logic."""
+        """Execute an order with retry logic.
+
+        In DRY_RUN mode the order is logged but never sent to the exchange.
+        """
+        if self._dry_run:
+            log.info(
+                "dry_run_order",
+                market=order.market,
+                side=order.side.value,
+                amount_krw=str(order.amount_krw),
+                volume=str(order.volume),
+            )
+            synthetic = OrderResultMessage(
+                source_agent=self.agent_id,
+                order_uuid="dry-run",
+                market=order.market,
+                side=order.side,
+                status=OrderStatus.FILLED,
+                executed_volume=order.volume or Decimal("0"),
+                executed_price=order.price or Decimal("0"),
+                fee=Decimal("0"),
+            )
+            await self.bus.publish("order:filled", synthetic)
+            return
+
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 result = await self._place_order(order)
@@ -104,6 +140,10 @@ class ExecutorAgent(BaseAgent):
             fee=Decimal("0"),
         )
         await self.bus.publish("order:failed", fail_msg)
+        await self._notifier.notify(
+            Event.ORDER_FAILURE,
+            f"Order FAILED after {MAX_RETRIES} retries: {order.market} {order.side.value}",
+        )
 
     async def _place_order(self, order: OrderRequestMessage) -> OrderResultMessage | None:
         """Place an order and wait for it to fill."""

@@ -3,11 +3,34 @@
 from __future__ import annotations
 
 import tomllib
+from enum import Enum
 from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class TradingMode(str, Enum):
+    """Controls whether orders are actually sent to the exchange.
+
+    DRY_RUN (default): signals, risk checks, and order decisions run normally
+    but the executor logs orders instead of placing them on Upbit.
+
+    LIVE: orders are placed on the exchange for real.
+    """
+
+    DRY_RUN = "dry_run"
+    LIVE = "live"
+
+
+class TradingConfig(BaseSettings):
+    """Top-level trading safety switches (env-var driven)."""
+
+    model_config = SettingsConfigDict(env_prefix="TRADING_")
+
+    mode: TradingMode = TradingMode.DRY_RUN
+    enabled: bool = True  # kill switch — set False to halt all order flow
 
 
 class UpbitConfig(BaseSettings):
@@ -68,30 +91,59 @@ class CandleConfig(BaseModel):
     intervals: list[str] = ["1m", "5m", "15m", "1h"]
 
 
+class NotificationConfig(BaseSettings):
+    """Notification / alerting configuration.
+
+    Set ``enabled = true`` and provide a Telegram bot token + chat ID
+    to receive real-time notifications.  Additional backends can be
+    added by extending :class:`core.notifier.Notifier`.
+
+    Telegram secrets are read from TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID
+    env vars (no prefix).  The ``enabled`` flag lives in the TOML file.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="TELEGRAM_")
+
+    enabled: bool = False
+    bot_token: str = ""
+    chat_id: str = ""
+
+
 class AppConfig(BaseModel):
+    trading: TradingConfig = TradingConfig()
     upbit: UpbitConfig
     redis: RedisConfig = RedisConfig()
     risk: RiskConfig = RiskConfig()
     strategy: StrategyConfig = StrategyConfig()
     rules: RuleStrategyConfig = RuleStrategyConfig()
     candle: CandleConfig = CandleConfig()
+    notification: NotificationConfig = NotificationConfig()
 
     @classmethod
     def load(cls, settings_path: Path | None = None) -> Self:
         """Load config from environment variables and optional TOML file."""
         upbit = UpbitConfig()
         redis = RedisConfig()
+        trading = TradingConfig()
 
         overrides: dict = {}
         if settings_path and settings_path.exists():
             with open(settings_path, "rb") as f:
                 overrides = tomllib.load(f)
 
+        # NotificationConfig reads secrets from env; TOML only sets 'enabled'
+        notif_env = NotificationConfig()
+        notif_overrides = overrides.get("notification", {})
+        if notif_overrides:
+            notif_env = notif_env.model_copy(update=notif_overrides)
+
         return cls(
+            trading=trading,
             upbit=upbit,
             redis=redis,
             risk=RiskConfig(**overrides.get("risk", {})),
             strategy=StrategyConfig(**overrides.get("strategy", {})),
             rules=RuleStrategyConfig(**overrides.get("rules", {})),
             candle=CandleConfig(**overrides.get("candle", {})),
+            notification=notif_env,
         )

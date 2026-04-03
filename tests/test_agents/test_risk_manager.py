@@ -117,6 +117,32 @@ class TestValidateOrder:
         assert reason is None
 
 
+class TestKillSwitch:
+    def test_reject_when_trading_disabled(self, risk_agent: RiskManagerAgent) -> None:
+        risk_agent.config.trading.enabled = False
+        order = OrderRequestMessage(
+            source_agent="test",
+            market="KRW-BTC",
+            side=OrderSide.BID,
+            order_type=OrderType.MARKET,
+            amount_krw=Decimal("10000"),
+        )
+        reason = risk_agent._validate_order(order)
+        assert reason is not None
+        assert "kill switch" in reason.lower()
+
+    def test_allow_when_trading_enabled(self, risk_agent: RiskManagerAgent) -> None:
+        risk_agent.config.trading.enabled = True
+        order = OrderRequestMessage(
+            source_agent="test",
+            market="KRW-BTC",
+            side=OrderSide.BID,
+            order_type=OrderType.MARKET,
+            amount_krw=Decimal("10000"),
+        )
+        assert risk_agent._validate_order(order) is None
+
+
 class TestEstimateOrderAmount:
     def test_from_amount_krw(self, risk_agent: RiskManagerAgent) -> None:
         order = OrderRequestMessage(

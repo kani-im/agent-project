@@ -27,6 +27,7 @@ from coin_trader.core.message import (
     SignalMessage,
     TickerMessage,
 )
+from coin_trader.core.notifier import Event, Notifier
 from coin_trader.exchange.rest_client import UpbitRestClient
 from coin_trader.strategies.combiner import SignalCombiner
 
@@ -47,6 +48,7 @@ class PortfolioManagerAgent(BaseAgent):
 
     def __init__(self, config: AppConfig) -> None:
         super().__init__(config)
+        self._notifier = Notifier.from_config(config.notification)
         self._combiner = SignalCombiner(
             weights={
                 "ta": config.strategy.weights.ta,
@@ -210,6 +212,11 @@ class PortfolioManagerAgent(BaseAgent):
             current_price=str(current_price),
             pnl_pct=f"{float(pnl_pct):.4f}",
         )
+        event = Event.TAKE_PROFIT if reason == "take_profit" else Event.STOP_LOSS
+        await self._notifier.notify(
+            event,
+            f"{market} {reason}: pnl={float(pnl_pct):.2%}, avg={avg_price}, cur={current_price}",
+        )
 
     async def _make_decision(self, market: str) -> None:
         """Evaluate signals and decide whether to place a buy order.
@@ -256,6 +263,10 @@ class PortfolioManagerAgent(BaseAgent):
                 volume=str(position),
                 confidence=round(confidence, 3),
             )
+            await self._notifier.notify(
+                Event.SELL_SIGNAL,
+                f"{market} SELL {position} (conf={confidence:.2f})",
+            )
 
     async def _try_buy(self, market: str, *, confidence: float, source: str) -> None:
         """Attempt to place a buy order respecting cooldown and limits."""
@@ -290,6 +301,10 @@ class PortfolioManagerAgent(BaseAgent):
             amount_krw=str(buy_amount),
             confidence=round(confidence, 3),
             source=source,
+        )
+        await self._notifier.notify(
+            Event.BUY_SIGNAL,
+            f"{market} BUY {buy_amount} KRW (conf={confidence:.2f}, src={source})",
         )
 
     async def _refresh_balances(self) -> None:

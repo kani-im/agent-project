@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from coin_trader.core.config import AppConfig
 from coin_trader.core.logging import get_logger
 from coin_trader.core.message import HeartbeatMessage
+from coin_trader.core.notifier import Event, Notifier
 from coin_trader.core.redis_bus import RedisBus
 
 log = get_logger(__name__)
@@ -24,6 +25,7 @@ class BaseAgent(ABC):
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.bus = RedisBus(config.redis.url)
+        self._notifier_base = Notifier.from_config(config.notification)
         self._running = False
         self._tasks: list[asyncio.Task] = []
 
@@ -50,6 +52,12 @@ class BaseAgent(ABC):
             await self.run()
         except asyncio.CancelledError:
             log.info("agent_cancelled", agent=self.agent_id)
+        except Exception:
+            log.exception("agent_critical_error", agent=self.agent_id)
+            await self._notifier_base.notify(
+                Event.CRITICAL_ERROR,
+                f"Agent {self.agent_type} ({self.agent_id}) crashed",
+            )
         finally:
             self._running = False
             for task in self._tasks:

@@ -1,4 +1,8 @@
-"""Risk Manager Agent - Validates orders against risk limits."""
+"""Risk Manager Agent - Validates orders against risk limits.
+
+Respects the global kill switch (``TRADING_ENABLED=false``) which
+causes *all* incoming orders to be rejected immediately.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +22,7 @@ from coin_trader.core.message import (
     OrderStatus,
     TickerMessage,
 )
+from coin_trader.core.notifier import Event, Notifier
 
 log = get_logger(__name__)
 
@@ -27,6 +32,7 @@ class RiskManagerAgent(BaseAgent):
 
     def __init__(self, config: AppConfig) -> None:
         super().__init__(config)
+        self._notifier = Notifier.from_config(config.notification)
         # market -> current position value in KRW
         self._positions: dict[str, Decimal] = {}
         # Total portfolio value (cash + positions)
@@ -137,12 +143,20 @@ class RiskManagerAgent(BaseAgent):
             )
             await self.bus.publish("order:rejected", message)
             await self.bus.publish("alert:risk", alert)
+            await self._notifier.notify(
+                Event.ORDER_FAILURE,
+                f"Order rejected: {message.market} {message.side.value} — {rejection_reason}",
+            )
         else:
             log.info("order_approved", market=message.market, side=message.side.value)
             await self.bus.publish("order:approved", message)
 
     def _validate_order(self, order: OrderRequestMessage) -> str | None:
         """Validate order against risk limits. Returns rejection reason or None."""
+        # Kill switch — reject everything when trading is disabled
+        if not self.config.trading.enabled:
+            return "Trading is disabled (kill switch)"
+
         risk = self.config.risk
 
         # Check if trading is halted

@@ -54,10 +54,74 @@ uv run coin-trader status
 | Executor | Upbit API 주문 실행 |
 | Monitor | 시스템 상태 대시보드 |
 
-## Safety
+## Trading Mode & Safety Controls
+
+### Dry-Run / Live Switch
+
+The system defaults to **DRY_RUN** mode — all signals, risk checks, and order
+decisions run normally, but the executor **logs orders instead of placing them**
+on the exchange.
+
+```bash
+# Default (safe) — no real orders
+TRADING_MODE=dry_run
+
+# Enable live trading (requires explicit opt-in)
+TRADING_MODE=live
+```
+
+### Kill Switch
+
+Set `TRADING_ENABLED=false` to immediately halt **all** order flow.  The risk
+manager rejects every incoming order while the flag is off.
+
+```bash
+TRADING_ENABLED=false   # halt all orders
+TRADING_ENABLED=true    # resume (default)
+```
+
+### Notifications (Telegram)
+
+Real-time notifications for trading events can be sent to a Telegram chat.
+
+1. Create a Telegram bot via [@BotFather](https://t.me/BotFather) and get the token.
+2. Get your chat ID (message [@userinfobot](https://t.me/userinfobot)).
+3. Set env vars and enable in `config/settings.toml`:
+
+```bash
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+TELEGRAM_CHAT_ID=987654321
+```
+
+```toml
+# config/settings.toml
+[notification]
+enabled = true
+```
+
+**Supported events:**
+| Event | When |
+|-------|------|
+| `buy_signal` | Buy order requested |
+| `sell_signal` | Sell order requested |
+| `take_profit` | Position closed at profit target |
+| `stop_loss` | Position closed at loss limit |
+| `order_failure` | Order rejected or failed after retries |
+| `system_start` | Executor agent started |
+| `critical_error` | Agent crashed unexpectedly |
+
+### Risk Limits
 
 - 종목당 최대 포지션: 총자산의 30%
 - 일일 최대 손실: 10만원
 - 단일 주문 최대: 5만원
 - 드로다운 보호: 고점 대비 5% 하락 시 전량 청산
 - Graceful shutdown: 미체결 주문 자동 취소
+
+### Checklist Before Live Trading
+
+1. Run the system in `dry_run` mode first and verify signals/decisions in logs.
+2. Set Upbit API keys with **only the permissions you need** (trade-only, no withdrawals).
+3. Configure Telegram notifications so you can monitor remotely.
+4. Review risk limits in `config/settings.toml`.
+5. Only then set `TRADING_MODE=live`.

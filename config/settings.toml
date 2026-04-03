@@ -1,3 +1,8 @@
+# Notifications — tokens come from env vars; toggle here.
+[notification]
+enabled = false
+# telegram_bot_token and telegram_chat_id are set via env or secrets
+
 [strategy]
 target_markets = ["KRW-BTC", "KRW-ETH"]
 min_combined_confidence = 0.65

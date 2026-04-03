@@ -52,6 +52,9 @@ lookback_seconds = 300
 take_profit_pct = 0.05
 stop_loss_pct = 0.02
 max_entry_krw = 50000
+
+[notification]
+enabled = false
 """
     )
     return AppConfig.load(settings)
